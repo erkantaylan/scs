@@ -20,9 +20,7 @@ public class ConnectionLifecycleTests : IDisposable
     {
         _port = TestHelpers.GetFreePort();
         _server = ScsServerFactory.CreateServer(new ScsTcpEndPoint("127.0.0.1", _port));
-        _server.WireProtocolFactory = new TestWireProtocolFactory();
         _client = ScsClientFactory.CreateClient(new ScsTcpEndPoint("127.0.0.1", _port));
-        _client.WireProtocol = new TestWireProtocol();
     }
 
     public void Dispose()
@@ -207,7 +205,7 @@ public class ConnectionLifecycleTests : IDisposable
             for (int i = 0; i < 3; i++)
             {
                 var c = ScsClientFactory.CreateClient(new ScsTcpEndPoint("127.0.0.1", _port));
-                c.WireProtocol = new TestWireProtocol();
+
                 c.Connect();
                 clients.Add(c);
             }
@@ -254,7 +252,6 @@ public class ConnectionLifecycleTests : IDisposable
 
         // Restart server on the same port with the test wire protocol
         var server2 = ScsServerFactory.CreateServer(new ScsTcpEndPoint("127.0.0.1", _port));
-        server2.WireProtocolFactory = new TestWireProtocolFactory();
         try
         {
             server2.Start();

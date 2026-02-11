@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using MessagePack;
 
 namespace Hik.Communication.Scs.Communication.Messages
 {
@@ -6,19 +7,22 @@ namespace Hik.Communication.Scs.Communication.Messages
     /// This message is used to send/receive a raw byte array as message data.
     /// </summary>
     [Serializable]
+    [MessagePackObject]
     public class ScsRawDataMessage : ScsMessage
     {
         /// <summary>
         /// Message data that is being transmitted.
         /// </summary>
+        [Key(2)]
         public byte[] MessageData { get; set; }
 
         /// <summary>
         /// Default empty constructor.
         /// </summary>
+        [SerializationConstructor]
         public ScsRawDataMessage()
         {
-            
+
         }
 
         /// <summary>
@@ -30,7 +34,7 @@ namespace Hik.Communication.Scs.Communication.Messages
             MessageData = messageData;
         }
 
-                /// <summary>
+        /// <summary>
         /// Creates a new reply ScsRawDataMessage object with MessageData property.
         /// </summary>
         /// <param name="messageData">Message data that is being transmitted</param>

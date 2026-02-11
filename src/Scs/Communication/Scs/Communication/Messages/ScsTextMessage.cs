@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using MessagePack;
 
 namespace Hik.Communication.Scs.Communication.Messages
 {
@@ -6,19 +7,22 @@ namespace Hik.Communication.Scs.Communication.Messages
     /// This message is used to send/receive a text as message data.
     /// </summary>
     [Serializable]
+    [MessagePackObject]
     public class ScsTextMessage : ScsMessage
     {
         /// <summary>
         /// Message text that is being transmitted.
         /// </summary>
+        [Key(2)]
         public string Text { get; set; }
 
         /// <summary>
         /// Creates a new ScsTextMessage object.
         /// </summary>
+        [SerializationConstructor]
         public ScsTextMessage()
         {
-            
+
         }
 
         /// <summary>
@@ -43,7 +47,7 @@ namespace Hik.Communication.Scs.Communication.Messages
         {
             RepliedMessageId = repliedMessageId;
         }
-        
+
         /// <summary>
         /// Creates a string to represents this object.
         /// </summary>

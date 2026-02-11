@@ -21,9 +21,7 @@ public class PingPongTests : IDisposable
     {
         _port = TestHelpers.GetFreePort();
         _server = ScsServerFactory.CreateServer(new ScsTcpEndPoint("127.0.0.1", _port));
-        _server.WireProtocolFactory = new TestWireProtocolFactory();
         _client = ScsClientFactory.CreateClient(new ScsTcpEndPoint("127.0.0.1", _port));
-        _client.WireProtocol = new TestWireProtocol();
     }
 
     public void Dispose()

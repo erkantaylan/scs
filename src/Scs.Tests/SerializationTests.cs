@@ -1,17 +1,18 @@
 using Hik.Communication.Scs.Communication.Messages;
+using Hik.Communication.Scs.Communication.Protocols.BinarySerialization;
 using Hik.Communication.ScsServices.Communication.Messages;
 using Xunit;
 
 namespace Scs.Tests;
 
 /// <summary>
-/// Serialization roundtrip tests for all message types using the TestWireProtocol.
-/// Tests the framing protocol (4-byte length prefix) and message accumulation from
-/// BinarySerializationProtocol, with a .NET 10-compatible serializer override.
+/// Serialization roundtrip tests for all message types using BinarySerializationProtocol.
+/// Tests the framing protocol (4-byte length prefix), protocol version header byte,
+/// MessagePack serialization, and message accumulation.
 /// </summary>
 public class SerializationTests
 {
-    private readonly TestWireProtocol _protocol = new();
+    private readonly BinarySerializationProtocol _protocol = new();
 
     private IScsMessage RoundTrip(IScsMessage message)
     {
@@ -192,7 +193,7 @@ public class SerializationTests
     [Fact]
     public void MultipleMessages_InSingleByteStream_AllDeserialized()
     {
-        var protocol = new TestWireProtocol();
+        var protocol = new BinarySerializationProtocol();
 
         var msg1 = new ScsTextMessage("first");
         var msg2 = new ScsTextMessage("second");
@@ -219,7 +220,7 @@ public class SerializationTests
     [Fact]
     public void PartialMessage_CompletedInSecondCall_Deserializes()
     {
-        var protocol = new TestWireProtocol();
+        var protocol = new BinarySerializationProtocol();
         var original = new ScsTextMessage("split message");
         var bytes = protocol.GetBytes(original);
 
@@ -236,5 +237,16 @@ public class SerializationTests
         var messages2 = protocol.CreateMessages(part2).ToList();
         Assert.Single(messages2);
         Assert.Equal("split message", ((ScsTextMessage)messages2[0]).Text);
+    }
+
+    [Fact]
+    public void ProtocolVersionByte_IsIncludedInSerializedOutput()
+    {
+        var protocol = new BinarySerializationProtocol();
+        var message = new ScsTextMessage("test");
+        var bytes = protocol.GetBytes(message);
+
+        // After the 4-byte length prefix, the first byte should be the protocol version (1)
+        Assert.Equal(1, bytes[4]);
     }
 }

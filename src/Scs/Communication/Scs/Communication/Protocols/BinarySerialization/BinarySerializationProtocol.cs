@@ -1,29 +1,36 @@
-﻿using System;
+using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Formatters.Binary;
 using Hik.Communication.Scs.Communication.Messages;
+using Hik.Communication.ScsServices.Communication.Messages;
+using MessagePack;
+using MessagePack.Formatters;
+using IFormatterResolver = MessagePack.IFormatterResolver;
 
 namespace Hik.Communication.Scs.Communication.Protocols.BinarySerialization
 {
     /// <summary>
     /// Default communication protocol between server and clients to send and receive a message.
-    /// It uses .NET binary serialization to write and read messages.
-    /// 
+    /// It uses MessagePack to write and read messages.
+    ///
     /// A Message format:
-    /// [Message Length (4 bytes)][Serialized Message Content]
-    /// 
+    /// [Message Length (4 bytes)][Protocol Version (1 byte)][MessagePack Content]
+    ///
     /// If a message is serialized to byte array as N bytes, this protocol
-    /// adds 4 bytes size information to head of the message bytes, so total length is (4 + N) bytes.
-    /// 
-    /// This class can be derived to change serializer (default: BinaryFormatter). To do this,
+    /// adds 4 bytes size information to head of the message bytes, so total length is (4 + 1 + N) bytes.
+    ///
+    /// This class can be derived to change serializer (default: MessagePack). To do this,
     /// SerializeMessage and DeserializeMessage methods must be overrided.
     /// </summary>
     public class BinarySerializationProtocol : IScsWireProtocol
     {
         #region Private fields
+
+        /// <summary>
+        /// Protocol version byte. Version 1 = MessagePack serialization.
+        /// </summary>
+        private const byte ProtocolVersion = 1;
 
         /// <summary>
         /// Maximum length of a message.
@@ -34,6 +41,15 @@ namespace Hik.Communication.Scs.Communication.Protocols.BinarySerialization
         /// This MemoryStream object is used to collect receiving bytes to build messages.
         /// </summary>
         private MemoryStream _receiveMemoryStream;
+
+        /// <summary>
+        /// MessagePack serializer options with custom resolvers for object and ScsRemoteException types.
+        /// </summary>
+        private static readonly MessagePackSerializerOptions SerializerOptions = MessagePackSerializerOptions.Standard
+            .WithResolver(MessagePack.Resolvers.CompositeResolver.Create(
+                new IMessagePackFormatter[] { new PrimitiveObjectFormatter(), new ScsRemoteExceptionFormatter() },
+                new IFormatterResolver[] { MessagePack.Resolvers.StandardResolver.Instance }
+            ));
 
         #endregion
 
@@ -117,7 +133,7 @@ namespace Hik.Communication.Scs.Communication.Protocols.BinarySerialization
 
         #endregion
 
-        #region Proptected virtual methods
+        #region Protected virtual methods
 
         /// <summary>
         /// This method is used to serialize a IScsMessage to a byte array.
@@ -131,11 +147,11 @@ namespace Hik.Communication.Scs.Communication.Protocols.BinarySerialization
         /// </returns>
         protected virtual byte[] SerializeMessage(IScsMessage message)
         {
-            using (var memoryStream = new MemoryStream())
-            {
-                new BinaryFormatter().Serialize(memoryStream, message);
-                return memoryStream.ToArray();
-            }
+            var msgpackBytes = MessagePackSerializer.Serialize<IScsMessage>(message, SerializerOptions);
+            var result = new byte[1 + msgpackBytes.Length];
+            result[0] = ProtocolVersion;
+            Array.Copy(msgpackBytes, 0, result, 1, msgpackBytes.Length);
+            return result;
         }
 
         /// <summary>
@@ -150,29 +166,27 @@ namespace Hik.Communication.Scs.Communication.Protocols.BinarySerialization
         /// <returns>Deserialized message</returns>
         protected virtual IScsMessage DeserializeMessage(byte[] bytes)
         {
-            //Create a MemoryStream to convert bytes to a stream
-            using (var deserializeMemoryStream = new MemoryStream(bytes))
+            if (bytes.Length < 1)
             {
-                //Go to head of the stream
-                deserializeMemoryStream.Position = 0;
+                throw new CommunicationException("Message is too short to contain a protocol version byte.");
+            }
 
-                //Deserialize the message
-                var binaryFormatter = new BinaryFormatter
-                {
-                    AssemblyFormat = System.Runtime.Serialization.Formatters.FormatterAssemblyStyle.Simple,
-                    Binder = new DeserializationAppDomainBinder()
-                };
+            var version = bytes[0];
+            if (version != ProtocolVersion)
+            {
+                throw new CommunicationException("Unsupported protocol version: " + version + ". Expected: " + ProtocolVersion);
+            }
 
-                try
-                {
-                    //Return the deserialized message
-                    return (IScsMessage)binaryFormatter.Deserialize(deserializeMemoryStream);
-                }
-                catch (Exception exception)
-                {
-                    Reset(); // reset the received memory stream before the exception is rethrown - otherwise the same erroneous message is received again and again
-                    throw new SerializationException("error while deserializing message", exception);
-                }
+            try
+            {
+                var msgpackBytes = new byte[bytes.Length - 1];
+                Array.Copy(bytes, 1, msgpackBytes, 0, msgpackBytes.Length);
+                return MessagePackSerializer.Deserialize<IScsMessage>(msgpackBytes, SerializerOptions);
+            }
+            catch (Exception exception)
+            {
+                Reset();
+                throw new CommunicationException("Error while deserializing message", exception);
             }
         }
 
@@ -181,7 +195,7 @@ namespace Hik.Communication.Scs.Communication.Protocols.BinarySerialization
         #region Private methods
 
         /// <summary>
-        /// This method tries to read a single message and add to the messages collection. 
+        /// This method tries to read a single message and add to the messages collection.
         /// </summary>
         /// <param name="messages">Messages collection to collect messages</param>
         /// <returns>
@@ -302,20 +316,118 @@ namespace Hik.Communication.Scs.Communication.Protocols.BinarySerialization
 
         #endregion
 
-        #region Nested classes
+        #region Custom MessagePack formatters
 
         /// <summary>
-        /// This class is used in deserializing to allow deserializing objects that are defined
-        /// in assemlies that are load in runtime (like PlugIns).
+        /// Custom MessagePack formatter for <see cref="object"/> that handles common primitive types.
+        /// Each value is serialized as a 2-element array [type_tag, value], or a 1-element array [0] for null.
+        /// This ensures the wire format is identical across all .NET runtimes.
         /// </summary>
-        protected sealed class DeserializationAppDomainBinder : SerializationBinder
+        internal sealed class PrimitiveObjectFormatter : IMessagePackFormatter<object>
         {
-            public override Type BindToType(string assemblyName, string typeName)
+            private const byte TagNull = 0;
+            private const byte TagInt32 = 1;
+            private const byte TagString = 2;
+            private const byte TagInt64 = 3;
+            private const byte TagDouble = 4;
+            private const byte TagBool = 5;
+            private const byte TagByteArray = 6;
+
+            public void Serialize(ref MessagePackWriter writer, object value, MessagePackSerializerOptions options)
             {
-                var toAssemblyName = assemblyName.Split(',')[0];
-                return (from assembly in AppDomain.CurrentDomain.GetAssemblies()
-                        where assembly.FullName.Split(',')[0] == toAssemblyName
-                        select assembly.GetType(typeName)).FirstOrDefault();
+                if (value == null)
+                {
+                    writer.WriteArrayHeader(1);
+                    writer.Write(TagNull);
+                    return;
+                }
+
+                writer.WriteArrayHeader(2);
+                switch (value)
+                {
+                    case int i:
+                        writer.Write(TagInt32);
+                        writer.Write(i);
+                        break;
+                    case string s:
+                        writer.Write(TagString);
+                        writer.Write(s);
+                        break;
+                    case long l:
+                        writer.Write(TagInt64);
+                        writer.Write(l);
+                        break;
+                    case double d:
+                        writer.Write(TagDouble);
+                        writer.Write(d);
+                        break;
+                    case bool b:
+                        writer.Write(TagBool);
+                        writer.Write(b);
+                        break;
+                    case byte[] arr:
+                        writer.Write(TagByteArray);
+                        writer.Write(arr);
+                        break;
+                    default:
+                        throw new NotSupportedException("Cannot serialize object of type: " + value.GetType());
+                }
+            }
+
+            public object Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options)
+            {
+                var count = reader.ReadArrayHeader();
+                var tag = reader.ReadByte();
+
+                if (tag == TagNull)
+                {
+                    return null;
+                }
+
+                switch (tag)
+                {
+                    case TagInt32: return reader.ReadInt32();
+                    case TagString: return reader.ReadString();
+                    case TagInt64: return reader.ReadInt64();
+                    case TagDouble: return reader.ReadDouble();
+                    case TagBool: return reader.ReadBoolean();
+                    case TagByteArray:
+                        var seq = reader.ReadBytes();
+                        if (!seq.HasValue) return null;
+                        return seq.Value.ToArray();
+                    default:
+                        throw new NotSupportedException("Unknown object tag: " + tag);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Custom MessagePack formatter for <see cref="ScsRemoteException"/>.
+        /// Serializes only the exception message string since Exception subclasses cannot be
+        /// directly serialized by MessagePack.
+        /// </summary>
+        internal sealed class ScsRemoteExceptionFormatter : IMessagePackFormatter<ScsRemoteException>
+        {
+            public void Serialize(ref MessagePackWriter writer, ScsRemoteException value, MessagePackSerializerOptions options)
+            {
+                if (value == null)
+                {
+                    writer.WriteNil();
+                    return;
+                }
+
+                writer.Write(value.Message ?? "");
+            }
+
+            public ScsRemoteException Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options)
+            {
+                if (reader.TryReadNil())
+                {
+                    return null;
+                }
+
+                var message = reader.ReadString();
+                return new ScsRemoteException(message);
             }
         }
 

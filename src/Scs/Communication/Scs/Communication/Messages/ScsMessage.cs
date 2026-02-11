@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using MessagePack;
 
 namespace Hik.Communication.Scs.Communication.Messages
 {
@@ -7,6 +8,7 @@ namespace Hik.Communication.Scs.Communication.Messages
     /// This is the base class for all messages.
     /// </summary>
     [Serializable]
+    [MessagePackObject]
     public class ScsMessage : IScsMessage
     {
         /// <summary>
@@ -15,6 +17,7 @@ namespace Hik.Communication.Scs.Communication.Messages
         /// Do not change if you do not want to do low level changes
         /// such as custom wire protocols.
         /// </summary>
+        [Key(0)]
         public string MessageId { get; set; }
 
         /// <summary>
@@ -22,11 +25,13 @@ namespace Hik.Communication.Scs.Communication.Messages
         /// a Reply message to a message.
         /// It may be null if this is not a reply message.
         /// </summary>
+        [Key(1)]
         public string RepliedMessageId { get; set; }
 
         /// <summary>
         /// Creates a new ScsMessage.
         /// </summary>
+        [SerializationConstructor]
         public ScsMessage()
         {
             MessageId = Guid.NewGuid().ToString();

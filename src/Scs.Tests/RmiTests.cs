@@ -51,22 +51,19 @@ public class FaultyService : ScsService, IFaultyService
 }
 
 /// <summary>
-/// Helper to build service server and client with custom wire protocol (needed for .NET 10+
-/// since BinaryFormatter is removed).
+/// Helper to build service server and client using default wire protocol (MessagePack).
 /// </summary>
 internal static class ServiceTestHelper
 {
     public static IScsServiceApplication CreateServiceApp(ScsTcpEndPoint endpoint)
     {
         var server = ScsServerFactory.CreateServer(endpoint);
-        server.WireProtocolFactory = new TestWireProtocolFactory();
         return new ScsServiceApplication(server);
     }
 
     public static IScsServiceClient<T> CreateServiceClient<T>(ScsTcpEndPoint endpoint) where T : class
     {
         var client = ScsClientFactory.CreateClient(endpoint);
-        client.WireProtocol = new TestWireProtocol();
         return new ScsServiceClient<T>(client, null);
     }
 }

@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using MessagePack;
 
 namespace Hik.Communication.Scs.Communication.Messages
 {
@@ -7,11 +8,13 @@ namespace Hik.Communication.Scs.Communication.Messages
     /// Ping messages is used to keep connection alive between server and client.
     /// </summary>
     [Serializable]
+    [MessagePackObject]
     public sealed class ScsPingMessage : ScsMessage
     {
         ///<summary>
         /// Creates a new PingMessage object.
         ///</summary>
+        [SerializationConstructor]
         public ScsPingMessage()
         {
 

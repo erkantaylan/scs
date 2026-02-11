@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using Hik.Communication.Scs.Communication.Messages;
+using MessagePack;
 
 namespace Hik.Communication.ScsServices.Communication.Messages
 {
@@ -8,17 +9,20 @@ namespace Hik.Communication.ScsServices.Communication.Messages
     /// It is used to send return value of method invocation.
     /// </summary>
     [Serializable]
+    [MessagePackObject]
     public class ScsRemoteInvokeReturnMessage : ScsMessage
     {
         /// <summary>
         /// Return value of remote method invocation.
         /// </summary>
+        [Key(2)]
         public object ReturnValue { get; set; }
 
         /// <summary>
         /// If any exception occured during method invocation, this field contains Exception object.
         /// If no exception occured, this field is null.
         /// </summary>
+        [Key(3)]
         public ScsRemoteException RemoteException { get; set; }
 
         /// <summary>

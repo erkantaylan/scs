@@ -29,7 +29,8 @@ namespace Hik.Communication.Scs.Client.Tcp
             }
             catch (SocketException socketException)
             {
-                if (socketException.ErrorCode != 10035)
+                if (socketException.SocketErrorCode != SocketError.WouldBlock &&
+                    socketException.SocketErrorCode != SocketError.InProgress)
                 {
                     socket.Close();
                     throw;

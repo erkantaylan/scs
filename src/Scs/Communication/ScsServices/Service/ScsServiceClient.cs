@@ -1,10 +1,10 @@
 ﻿using System;
-using System.Runtime.Remoting.Proxies;
 using Hik.Communication.Scs.Communication;
 using Hik.Communication.Scs.Communication.EndPoints;
 using Hik.Communication.Scs.Communication.Messengers;
 using Hik.Communication.Scs.Server;
 using Hik.Communication.ScsServices.Communication;
+using Hik.Proxy;
 
 namespace Hik.Communication.ScsServices.Service
 {
@@ -69,7 +69,7 @@ namespace Hik.Communication.ScsServices.Service
         /// <summary>
         /// Last created proxy object to invoke remote medhods.
         /// </summary>
-        private RealProxy _realProxy;
+        private IInterceptor _realProxy;
 
         #endregion
 
@@ -107,7 +107,8 @@ namespace Hik.Communication.ScsServices.Service
         public T GetClientProxy<T>() where T : class
         {
             _realProxy = new RemoteInvokeProxy<T, IScsServerClient>(_requestReplyMessenger);
-            return (T)_realProxy.GetTransparentProxy();
+            return ProxyGenerator.Create<T>(_realProxy);
+            //return (T)_realProxy.GetTransparentProxy();
         }
 
         #endregion
@@ -126,7 +127,7 @@ namespace Hik.Communication.ScsServices.Service
         }
 
         #endregion
-        
+
         #region Event raising methods
 
         /// <summary>

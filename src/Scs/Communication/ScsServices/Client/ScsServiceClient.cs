@@ -6,6 +6,7 @@ using Hik.Communication.Scs.Communication.Messages;
 using Hik.Communication.Scs.Communication.Messengers;
 using Hik.Communication.ScsServices.Communication;
 using Hik.Communication.ScsServices.Communication.Messages;
+using Hik.Proxy;
 
 namespace Hik.Communication.ScsServices.Client
 {
@@ -113,7 +114,8 @@ namespace Hik.Communication.ScsServices.Client
             _requestReplyMessenger.MessageReceived += RequestReplyMessenger_MessageReceived;
 
             _realServiceProxy = new AutoConnectRemoteInvokeProxy<T, IScsClient>(_requestReplyMessenger, this);
-            ServiceProxy = (T)_realServiceProxy.GetTransparentProxy();
+            ServiceProxy = ProxyGenerator.Create<T>(_realServiceProxy);
+            //ServiceProxy = (T)_realServiceProxy.GetTransparentProxy();
         }
 
         #endregion

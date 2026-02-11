@@ -1,4 +1,4 @@
-﻿using System.Runtime.Remoting.Messaging;
+﻿using System.Reflection;
 using Hik.Communication.Scs.Client;
 using Hik.Communication.Scs.Communication;
 using Hik.Communication.Scs.Communication.Messengers;
@@ -30,28 +30,54 @@ namespace Hik.Communication.ScsServices.Communication
         }
 
         /// <summary>
-        /// Overrides message calls and translates them to messages to remote application.
+        /// 将方法调用转换为远程方法调用
         /// </summary>
-        /// <param name="msg">Method invoke message (from RealProxy base class)</param>
-        /// <returns>Method invoke return message (to RealProxy base class)</returns>
-        public override IMessage Invoke(IMessage msg)
+        /// <param name="method">代理方法</param>
+        /// <param name="parameters">代理参数</param>
+        /// <returns>方法返回结果</returns>
+        public override object Intercept(MethodInfo method, object[] parameters)
         {
             if (_client.CommunicationState == CommunicationStates.Connected)
             {
                 //If already connected, behave as base class (RemoteInvokeProxy).
-                return base.Invoke(msg);
+                return base.Intercept(method, parameters);
             }
 
             //Connect, call method and finally disconnect
             _client.Connect();
             try
             {
-                return base.Invoke(msg);
+                return base.Intercept(method, parameters);
             }
             finally
             {
                 _client.Disconnect();
             }
         }
+
+        ///// <summary>
+        ///// Overrides message calls and translates them to messages to remote application.
+        ///// </summary>
+        ///// <param name="msg">Method invoke message (from RealProxy base class)</param>
+        ///// <returns>Method invoke return message (to RealProxy base class)</returns>
+        //public override IMessage Invoke(IMessage msg)
+        //{
+        //    if (_client.CommunicationState == CommunicationStates.Connected)
+        //    {
+        //        //If already connected, behave as base class (RemoteInvokeProxy).
+        //        return base.Invoke(msg);
+        //    }
+
+        //    //Connect, call method and finally disconnect
+        //    _client.Connect();
+        //    try
+        //    {
+        //        return base.Invoke(msg);
+        //    }
+        //    finally
+        //    {
+        //        _client.Disconnect();
+        //    }
+        //}
     }
 }

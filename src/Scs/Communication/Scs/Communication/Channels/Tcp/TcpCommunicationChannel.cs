@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 
 using Hik.Communication.Scs.Communication.EndPoints;
@@ -66,10 +67,12 @@ namespace Hik.Communication.Scs.Communication.Channels.Tcp
         /// </summary>
         /// <param name="clientSocket">A connected Socket object that is
         /// used to communicate over network</param>
-        public TcpCommunicationChannel(Socket clientSocket)
+        /// <param name="socketOptions">TCP socket options to apply, or null for defaults</param>
+        public TcpCommunicationChannel(Socket clientSocket, TcpSocketOptions socketOptions = null)
         {
             _clientSocket = clientSocket;
-            _clientSocket.NoDelay = true;
+            var options = socketOptions ?? new TcpSocketOptions();
+            ApplySocketOptions(_clientSocket, options);
 
             var ipEndPoint = (IPEndPoint)_clientSocket.RemoteEndPoint;
             _remoteEndPoint = new ScsTcpEndPoint(ipEndPoint.Address.ToString(), ipEndPoint.Port);
@@ -151,6 +154,124 @@ namespace Hik.Communication.Scs.Communication.Channels.Tcp
         #endregion
 
         #region Private methods
+
+        // TCP_KEEPIDLE – seconds before first keep-alive probe (Linux)
+        private const int TcpKeepIdle = 4;
+        // TCP_KEEPINTVL – seconds between keep-alive probes (Linux)
+        private const int TcpKeepInterval = 5;
+
+        /// <summary>
+        /// Applies the given TCP socket options to a connected socket.
+        /// </summary>
+        private static void ApplySocketOptions(Socket socket, TcpSocketOptions options)
+        {
+            socket.NoDelay = options.NoDelay;
+            socket.SendTimeout = options.SendTimeout;
+            socket.ReceiveTimeout = options.ReceiveTimeout;
+
+            if (options.KeepAliveEnabled)
+            {
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    if (options.KeepAliveTimeSeconds.HasValue)
+                    {
+                        try
+                        {
+                            socket.SetSocketOption(
+                                SocketOptionLevel.Tcp,
+                                (SocketOptionName)TcpKeepIdle,
+                                options.KeepAliveTimeSeconds.Value);
+                        }
+                        catch (SocketException)
+                        {
+                            // Platform doesn't support this option – silently ignore
+                        }
+                    }
+
+                    if (options.KeepAliveIntervalSeconds.HasValue)
+                    {
+                        try
+                        {
+                            socket.SetSocketOption(
+                                SocketOptionLevel.Tcp,
+                                (SocketOptionName)TcpKeepInterval,
+                                options.KeepAliveIntervalSeconds.Value);
+                        }
+                        catch (SocketException)
+                        {
+                            // Platform doesn't support this option – silently ignore
+                        }
+                    }
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    // On Windows, use IOControl with tcp_keepalive structure
+                    var keepAliveTime = options.KeepAliveTimeSeconds.HasValue
+                        ? (uint)(options.KeepAliveTimeSeconds.Value * 1000)
+                        : 0u;
+                    var keepAliveInterval = options.KeepAliveIntervalSeconds.HasValue
+                        ? (uint)(options.KeepAliveIntervalSeconds.Value * 1000)
+                        : 0u;
+
+                    if (keepAliveTime > 0 || keepAliveInterval > 0)
+                    {
+                        try
+                        {
+                            // tcp_keepalive struct: onoff (4 bytes), keepalivetime (4 bytes), keepaliveinterval (4 bytes)
+                            var inValue = new byte[12];
+                            BitConverter.GetBytes(1u).CopyTo(inValue, 0); // onoff = 1
+                            BitConverter.GetBytes(keepAliveTime > 0 ? keepAliveTime : 7200000u).CopyTo(inValue, 4);
+                            BitConverter.GetBytes(keepAliveInterval > 0 ? keepAliveInterval : 1000u).CopyTo(inValue, 8);
+                            // SIO_KEEPALIVE_VALS = 0x98000004 (Windows IOControl code)
+                            socket.IOControl(unchecked((int)0x98000004), inValue, null);
+                        }
+                        catch (SocketException)
+                        {
+                            // Platform doesn't support this option – silently ignore
+                        }
+                    }
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    // macOS uses TCP_KEEPALIVE (0x10) for idle time
+                    if (options.KeepAliveTimeSeconds.HasValue)
+                    {
+                        try
+                        {
+                            socket.SetSocketOption(
+                                SocketOptionLevel.Tcp,
+                                (SocketOptionName)0x10,
+                                options.KeepAliveTimeSeconds.Value);
+                        }
+                        catch (SocketException)
+                        {
+                            // Platform doesn't support this option – silently ignore
+                        }
+                    }
+
+                    if (options.KeepAliveIntervalSeconds.HasValue)
+                    {
+                        try
+                        {
+                            socket.SetSocketOption(
+                                SocketOptionLevel.Tcp,
+                                (SocketOptionName)0x101,
+                                options.KeepAliveIntervalSeconds.Value);
+                        }
+                        catch (SocketException)
+                        {
+                            // Platform doesn't support this option – silently ignore
+                        }
+                    }
+                }
+            }
+            else
+            {
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, false);
+            }
+        }
 
         /// <summary>
         /// This method is used as callback method in _clientSocket's BeginReceive method.

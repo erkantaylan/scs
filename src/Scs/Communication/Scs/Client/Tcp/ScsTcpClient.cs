@@ -46,7 +46,8 @@ namespace Hik.Communication.Scs.Client.Tcp
                 TcpHelper.ConnectToServer(
                     endpoint,
                     ConnectTimeout
-                    ));
+                    ),
+                SocketOptions);
 
 
         }

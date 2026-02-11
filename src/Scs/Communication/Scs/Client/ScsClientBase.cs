@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using Hik.Communication.Scs.Communication;
 using Hik.Communication.Scs.Communication.Channels;
+using Hik.Communication.Scs.Communication.Channels.Tcp;
 using Hik.Communication.Scs.Communication.Messages;
 using Hik.Communication.Scs.Communication.Protocols;
 using Hik.Threading;
@@ -45,6 +46,12 @@ namespace Hik.Communication.Scs.Client
         #endregion
 
         #region Public properties
+
+        /// <summary>
+        /// Gets or sets the TCP socket options applied when connecting.
+        /// Must be set before calling Connect().
+        /// </summary>
+        public TcpSocketOptions SocketOptions { get; set; } = new TcpSocketOptions();
 
         /// <summary>
         /// Timeout for connecting to a server (as milliseconds).

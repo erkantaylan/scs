@@ -1,5 +1,6 @@
 ﻿using System;
 using Hik.Communication.Scs.Communication;
+using Hik.Communication.Scs.Communication.Channels.Tcp;
 using Hik.Communication.Scs.Communication.Messages;
 
 namespace Hik.Communication.Scs.Client
@@ -23,6 +24,12 @@ namespace Hik.Communication.Scs.Client
         /// This event is raised when a ping round-trip completes.
         /// </summary>
         event EventHandler<PingCompletedEventArgs> PingCompleted;
+
+        /// <summary>
+        /// Gets or sets the TCP socket options applied when connecting.
+        /// Must be set before calling Connect().
+        /// </summary>
+        TcpSocketOptions SocketOptions { get; set; }
 
         /// <summary>
         /// Timeout for connecting to a server (as milliseconds).

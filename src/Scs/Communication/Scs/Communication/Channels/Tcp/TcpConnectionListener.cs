@@ -17,6 +17,11 @@ namespace Hik.Communication.Scs.Communication.Channels.Tcp
         private readonly ScsTcpEndPoint _endPoint;
 
         /// <summary>
+        /// TCP socket options to apply to accepted client connections.
+        /// </summary>
+        private readonly TcpSocketOptions _socketOptions;
+
+        /// <summary>
         /// Server socket to listen incoming connection requests.
         /// </summary>
         private TcpListener _listenerSocket;
@@ -35,9 +40,11 @@ namespace Hik.Communication.Scs.Communication.Channels.Tcp
         /// Creates a new TcpConnectionListener for given endpoint.
         /// </summary>
         /// <param name="endPoint">The endpoint address of the server to listen incoming connections</param>
-        public TcpConnectionListener(ScsTcpEndPoint endPoint)
+        /// <param name="socketOptions">TCP socket options to apply to accepted connections, or null for defaults</param>
+        public TcpConnectionListener(ScsTcpEndPoint endPoint, TcpSocketOptions socketOptions = null)
         {
             _endPoint = endPoint;
+            _socketOptions = socketOptions;
         }
 
         /// <summary>
@@ -97,7 +104,7 @@ namespace Hik.Communication.Scs.Communication.Channels.Tcp
                     var clientSocket = _listenerSocket.AcceptSocket();
                     if (clientSocket.Connected)
                     {
-                        OnCommunicationChannelConnected(new TcpCommunicationChannel(clientSocket));
+                        OnCommunicationChannelConnected(new TcpCommunicationChannel(clientSocket, _socketOptions));
                     }
                 }
                 catch

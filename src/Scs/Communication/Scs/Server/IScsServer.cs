@@ -1,5 +1,6 @@
 ﻿using System;
 using Hik.Collections;
+using Hik.Communication.Scs.Communication.Channels.Tcp;
 using Hik.Communication.Scs.Communication.Protocols;
 
 namespace Hik.Communication.Scs.Server
@@ -18,6 +19,12 @@ namespace Hik.Communication.Scs.Server
         /// This event is raised when a client disconnected from the server.
         /// </summary>
         event EventHandler<ServerClientEventArgs> ClientDisconnected;
+
+        /// <summary>
+        /// Gets or sets the TCP socket options applied to accepted client connections.
+        /// Must be set before calling Start().
+        /// </summary>
+        TcpSocketOptions SocketOptions { get; set; }
 
         /// <summary>
         /// Gets/sets wire protocol factory to create IWireProtocol objects.

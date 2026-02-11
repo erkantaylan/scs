@@ -29,7 +29,7 @@ namespace Hik.Communication.Scs.Server.Tcp
         /// <returns>Created listener object</returns>
         protected override IConnectionListener CreateConnectionListener()
         {
-            return new TcpConnectionListener(_endPoint);
+            return new TcpConnectionListener(_endPoint, SocketOptions);
         }
     }
 }

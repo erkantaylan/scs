@@ -1,6 +1,7 @@
 ﻿using System;
 using Hik.Collections;
 using Hik.Communication.Scs.Communication.Channels;
+using Hik.Communication.Scs.Communication.Channels.Tcp;
 using Hik.Communication.Scs.Communication.Protocols;
 
 namespace Hik.Communication.Scs.Server
@@ -25,6 +26,12 @@ namespace Hik.Communication.Scs.Server
         #endregion
 
         #region Public properties
+
+        /// <summary>
+        /// Gets or sets the TCP socket options applied to accepted client connections.
+        /// Must be set before calling Start().
+        /// </summary>
+        public TcpSocketOptions SocketOptions { get; set; } = new TcpSocketOptions();
 
         /// <summary>
         /// Gets/sets wire protocol that is used while reading and writing messages.

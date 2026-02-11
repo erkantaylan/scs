@@ -22,3 +22,4 @@ namespace Hik.Communication.ScsServices.Client
         int Timeout { get; set; }
     }
 }
+

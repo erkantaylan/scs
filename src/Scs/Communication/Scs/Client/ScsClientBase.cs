@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using Hik.Communication.Scs.Communication;
 using Hik.Communication.Scs.Communication.Channels;
 using Hik.Communication.Scs.Communication.Messages;
@@ -34,6 +36,11 @@ namespace Hik.Communication.Scs.Client
         /// This event is raised when client disconnected from server.
         /// </summary>
         public event EventHandler Disconnected;
+
+        /// <summary>
+        /// This event is raised when a ping round-trip completes.
+        /// </summary>
+        public event EventHandler<PingCompletedEventArgs> PingCompleted;
 
         #endregion
 
@@ -102,6 +109,39 @@ namespace Hik.Communication.Scs.Client
             }
         }
 
+        /// <summary>
+        /// Gets/sets the interval between ping messages in milliseconds.
+        /// Default value: 30000 (30 seconds).
+        /// </summary>
+        public int PingInterval
+        {
+            get { return _pingTimer.Period; }
+            set { _pingTimer.Period = value; }
+        }
+
+        /// <summary>
+        /// Gets the round-trip time of the last completed ping in milliseconds,
+        /// or null if no ping has completed yet.
+        /// </summary>
+        public long? LastPingRtt { get; private set; }
+
+        /// <summary>
+        /// Gets the average round-trip time of recent pings in milliseconds,
+        /// or null if no ping has completed yet.
+        /// </summary>
+        public long? AveragePingRtt
+        {
+            get
+            {
+                if (_rttCount == 0)
+                {
+                    return null;
+                }
+
+                return _rttSum / _rttCount;
+            }
+        }
+
         #endregion
 
         #region Private fields
@@ -110,6 +150,16 @@ namespace Hik.Communication.Scs.Client
         /// Default timeout value for connecting a server.
         /// </summary>
         private const int DefaultConnectionAttemptTimeout = 15000; //15 seconds.
+
+        /// <summary>
+        /// Default ping interval in milliseconds.
+        /// </summary>
+        private const int DefaultPingInterval = 30000; //30 seconds.
+
+        /// <summary>
+        /// Maximum number of RTT samples to keep for averaging.
+        /// </summary>
+        private const int MaxRttSamples = 10;
 
         /// <summary>
         /// The communication channel that is used by client to send and receive messages.
@@ -121,6 +171,36 @@ namespace Hik.Communication.Scs.Client
         /// </summary>
         private readonly Timer _pingTimer;
 
+        /// <summary>
+        /// Tracks pending ping messages by their MessageId to the Stopwatch started when sent.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, Stopwatch> _pendingPings = new ConcurrentDictionary<string, Stopwatch>();
+
+        /// <summary>
+        /// Circular buffer of recent RTT samples for computing average.
+        /// </summary>
+        private readonly long[] _rttSamples = new long[MaxRttSamples];
+
+        /// <summary>
+        /// Number of RTT samples collected (capped at MaxRttSamples).
+        /// </summary>
+        private int _rttCount;
+
+        /// <summary>
+        /// Sum of all samples in the RTT buffer for fast average computation.
+        /// </summary>
+        private long _rttSum;
+
+        /// <summary>
+        /// Index of the next position to write in the circular buffer.
+        /// </summary>
+        private int _rttIndex;
+
+        /// <summary>
+        /// Lock object for RTT sample buffer updates.
+        /// </summary>
+        private readonly object _rttLock = new object();
+
         #endregion
 
         #region Constructor
@@ -130,7 +210,7 @@ namespace Hik.Communication.Scs.Client
         /// </summary>
         protected ScsClientBase()
         {
-            _pingTimer = new Timer(30000);
+            _pingTimer = new Timer(DefaultPingInterval);
             _pingTimer.Elapsed += PingTimer_Elapsed;
             ConnectTimeout = DefaultConnectionAttemptTimeout;
             WireProtocol = WireProtocolManager.GetDefaultWireProtocol();
@@ -214,8 +294,10 @@ namespace Hik.Communication.Scs.Client
         /// <param name="e">Event arguments</param>
         private void CommunicationChannel_MessageReceived(object sender, MessageEventArgs e)
         {
-            if (e.Message is ScsPingMessage)
+            var pingMessage = e.Message as ScsPingMessage;
+            if (pingMessage != null)
             {
+                HandlePingReply(pingMessage);
                 return;
             }
 
@@ -223,12 +305,68 @@ namespace Hik.Communication.Scs.Client
         }
 
         /// <summary>
+        /// Handles a received ping reply by computing RTT from the matching pending ping.
+        /// </summary>
+        /// <param name="pingMessage">The received ping reply message</param>
+        private void HandlePingReply(ScsPingMessage pingMessage)
+        {
+            if (string.IsNullOrEmpty(pingMessage.RepliedMessageId))
+            {
+                return;
+            }
+
+            Stopwatch sw;
+            if (!_pendingPings.TryRemove(pingMessage.RepliedMessageId, out sw))
+            {
+                return;
+            }
+
+            sw.Stop();
+            var rttMs = sw.ElapsedMilliseconds;
+
+            LastPingRtt = rttMs;
+            RecordRttSample(rttMs);
+            OnPingCompleted(rttMs);
+        }
+
+        /// <summary>
+        /// Records an RTT sample into the circular buffer and updates the running sum.
+        /// </summary>
+        /// <param name="rttMs">Round-trip time in milliseconds</param>
+        private void RecordRttSample(long rttMs)
+        {
+            lock (_rttLock)
+            {
+                if (_rttCount < MaxRttSamples)
+                {
+                    _rttSamples[_rttIndex] = rttMs;
+                    _rttSum += rttMs;
+                    _rttCount++;
+                }
+                else
+                {
+                    _rttSum -= _rttSamples[_rttIndex];
+                    _rttSamples[_rttIndex] = rttMs;
+                    _rttSum += rttMs;
+                }
+
+                _rttIndex = (_rttIndex + 1) % MaxRttSamples;
+            }
+        }
+
+        /// <summary>
         /// Handles MessageSent event of _communicationChannel object.
+        /// Starts RTT tracking for outgoing ping messages.
         /// </summary>
         /// <param name="sender">Source of event</param>
         /// <param name="e">Event arguments</param>
         private void CommunicationChannel_MessageSent(object sender, MessageEventArgs e)
         {
+            if (e.Message is ScsPingMessage && string.IsNullOrEmpty(e.Message.RepliedMessageId))
+            {
+                _pendingPings[e.Message.MessageId] = Stopwatch.StartNew();
+            }
+
             OnMessageSent(e.Message);
         }
 
@@ -240,6 +378,7 @@ namespace Hik.Communication.Scs.Client
         private void CommunicationChannel_Disconnected(object sender, EventArgs e)
         {
             _pingTimer.Stop();
+            _pendingPings.Clear();
             OnDisconnected();
         }
 
@@ -322,6 +461,19 @@ namespace Hik.Communication.Scs.Client
             if (handler != null)
             {
                 handler(this, new MessageEventArgs(message));
+            }
+        }
+
+        /// <summary>
+        /// Raises PingCompleted event.
+        /// </summary>
+        /// <param name="rttMs">Round-trip time in milliseconds</param>
+        protected virtual void OnPingCompleted(long rttMs)
+        {
+            var handler = PingCompleted;
+            if (handler != null)
+            {
+                handler(this, new PingCompletedEventArgs(rttMs));
             }
         }
 

@@ -28,6 +28,15 @@ namespace Hik.Communication.ScsServices.Client
         /// </summary>
         public event EventHandler Disconnected;
 
+        /// <summary>
+        /// This event is raised when a ping round-trip completes.
+        /// </summary>
+        public event EventHandler<PingCompletedEventArgs> PingCompleted
+        {
+            add { _client.PingCompleted += value; }
+            remove { _client.PingCompleted -= value; }
+        }
+
         #endregion
 
         #region Public properties
@@ -48,6 +57,34 @@ namespace Hik.Communication.ScsServices.Client
         public CommunicationStates CommunicationState
         {
             get { return _client.CommunicationState; }
+        }
+
+        /// <summary>
+        /// Gets/sets the interval between ping messages in milliseconds.
+        /// Default value: 30000 (30 seconds).
+        /// </summary>
+        public int PingInterval
+        {
+            get { return _client.PingInterval; }
+            set { _client.PingInterval = value; }
+        }
+
+        /// <summary>
+        /// Gets the round-trip time of the last completed ping in milliseconds,
+        /// or null if no ping has completed yet.
+        /// </summary>
+        public long? LastPingRtt
+        {
+            get { return _client.LastPingRtt; }
+        }
+
+        /// <summary>
+        /// Gets the average round-trip time of recent pings in milliseconds,
+        /// or null if no ping has completed yet.
+        /// </summary>
+        public long? AveragePingRtt
+        {
+            get { return _client.AveragePingRtt; }
         }
 
         /// <summary>
